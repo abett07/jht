@@ -20,6 +20,7 @@ export default function Home() {
   const [stats, setStats] = useState({})
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [msg, setMsg] = useState('')
 
   const load = useCallback(() => {
@@ -58,10 +59,33 @@ export default function Home() {
     } catch { setMsg(`Error following up job #${id}`) }
   }
 
+  const applyJob = async (id) => {
+    setMsg(`Applying to job #${id}...`)
+    try {
+      const r = await fetch(`${API}/jobs/${id}/apply`, { method: 'POST' })
+      const d = await r.json()
+      setMsg(d.status === 'submitted' ? `Applied to job #${id} via ${d.method}` : `Apply ${d.status} for job #${id}: ${d.error || ''}`)
+      load()
+    } catch { setMsg(`Error applying to job #${id}`) }
+  }
+
+  const batchApply = async () => {
+    setApplying(true); setMsg('Running batch auto-apply...')
+    try {
+      const r = await fetch(`${API}/auto-apply`, { method: 'POST' })
+      const d = await r.json()
+      setMsg(`Batch apply: ${d.applied}/${d.total_attempted || 0} submitted`)
+      load()
+    } catch { setMsg('Batch auto-apply failed') }
+    setApplying(false)
+  }
+
   const filtered = jobs.filter(j => {
     if (filter === 'emailed') return j.email_sent
     if (filter === 'pending') return !j.email_sent && j.recruiter_email
     if (filter === 'high') return j.match_score >= 70
+    if (filter === 'applied') return j.auto_applied
+    if (filter === 'not_applied') return !j.auto_applied && !j.reject && j.url
     return true
   })
 
@@ -74,19 +98,26 @@ export default function Home() {
         <StatCard label="Total Jobs" value={stats.total_jobs ?? 0} />
         <StatCard label="Emails Sent" value={stats.emails_sent ?? 0} />
         <StatCard label="Follow-ups" value={stats.followups_sent ?? 0} />
+        <StatCard label="Auto-Applied" value={stats.auto_applied ?? 0} />
+        <StatCard label="Apply Failed" value={stats.apply_failed ?? 0} />
         <StatCard label="Avg Score" value={stats.avg_match_score ?? '-'} />
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={triggerScrape} disabled={loading} style={{ padding: '8px 16px', background: '#0070f3', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
           {loading ? 'Scraping...' : 'Run Scrape'}
+        </button>
+        <button onClick={batchApply} disabled={applying} style={{ padding: '8px 16px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+          {applying ? 'Applying...' : 'Auto-Apply All'}
         </button>
         <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc' }}>
           <option value="all">All Jobs</option>
           <option value="high">High Match (≥70)</option>
           <option value="emailed">Emailed</option>
           <option value="pending">Pending Send</option>
+          <option value="applied">Applied</option>
+          <option value="not_applied">Not Applied</option>
         </select>
         <button onClick={load} style={{ padding: '8px 12px', background: '#eee', border: '1px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Refresh</button>
         {msg && <span style={{ color: '#0070f3', fontSize: 13 }}>{msg}</span>}
@@ -103,7 +134,8 @@ export default function Home() {
               <th style={{ padding: 8 }}>Location</th>
               <th style={{ padding: 8 }}>Score</th>
               <th style={{ padding: 8 }}>Recruiter</th>
-              <th style={{ padding: 8 }}>Status</th>
+              <th style={{ padding: 8 }}>Email</th>
+              <th style={{ padding: 8 }}>Apply</th>
               <th style={{ padding: 8 }}>Actions</th>
             </tr>
           </thead>
@@ -111,7 +143,9 @@ export default function Home() {
             {filtered.map(j => (
               <tr key={j.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                 <td style={{ padding: 8 }}>{j.id}</td>
-                <td style={{ padding: 8, fontWeight: 500 }}>{j.title}</td>
+                <td style={{ padding: 8, fontWeight: 500 }}>
+                  {j.url ? <a href={j.url} target="_blank" rel="noopener noreferrer" style={{ color: '#0070f3', textDecoration: 'none' }}>{j.title}</a> : j.title}
+                </td>
                 <td style={{ padding: 8 }}>{j.company}</td>
                 <td style={{ padding: 8 }}>{j.location}</td>
                 <td style={{ padding: 8 }}>
@@ -129,6 +163,21 @@ export default function Home() {
                     : <Badge color="#ccc">No Email</Badge>}
                 </td>
                 <td style={{ padding: 8 }}>
+                  {j.auto_applied ? <Badge color="#22c55e">Submitted</Badge>
+                    : j.apply_status === 'failed' ? (
+                      <span title={j.apply_error || ''}>
+                        <Badge color="#ef4444">Failed</Badge>
+                      </span>
+                    )
+                    : j.apply_status === 'skipped' ? <Badge color="#a3a3a3">Skipped</Badge>
+                    : j.reject ? <Badge color="#ccc">Rejected</Badge>
+                    : <Badge color="#e5e7eb">Pending</Badge>}
+                  {j.apply_method && <span style={{ fontSize: 10, color: '#999', marginLeft: 4 }}>{j.apply_method}</span>}
+                </td>
+                <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                  {!j.auto_applied && !j.reject && j.url && (
+                    <button onClick={() => applyJob(j.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', marginRight: 4 }}>Apply</button>
+                  )}
                   {!j.email_sent && j.recruiter_email && (
                     <button onClick={() => sendEmail(j.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#0070f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', marginRight: 4 }}>Send</button>
                   )}

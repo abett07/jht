@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
 import logging
+from datetime import datetime
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -18,6 +19,7 @@ from .resume_parser import parse_resume_file
 from .email_finder import find_recruiter_email
 from .email_draft import generate_email
 from .emailer import send_email
+from .auto_apply.engine import apply_to_job, batch_apply
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -52,6 +54,12 @@ def _migrate_add_columns():
             "description": "TEXT",
             "reject": "BOOLEAN DEFAULT 0",
             "reject_reason": "VARCHAR",
+            "auto_applied": "BOOLEAN DEFAULT 0",
+            "apply_status": "VARCHAR",
+            "apply_method": "VARCHAR",
+            "applied_at": "DATETIME",
+            "apply_error": "TEXT",
+            "ats_detected": "VARCHAR",
         }
         with engine.begin() as conn:
             for col, col_type in new_cols.items():
@@ -173,17 +181,106 @@ def send_followup(job_id: int):
 
 @app.get("/stats")
 def stats():
-    """Dashboard stats: counts of jobs, emails sent, follow-ups, etc."""
+    """Dashboard stats: counts of jobs, emails sent, follow-ups, auto-applied, etc."""
     session = SessionLocal()
     try:
         total = session.query(models.Job).count()
         emailed = session.query(models.Job).filter(models.Job.email_sent == True).count()
         followed_up = session.query(models.Job).filter(models.Job.followup_sent == True).count()
+        auto_applied = session.query(models.Job).filter(models.Job.auto_applied == True).count()
+        apply_failed = session.query(models.Job).filter(models.Job.apply_status == "failed").count()
         avg_score = 0
         row = session.query(sqlfunc.avg(models.Job.match_score)).first()
         if row and row[0]:
             avg_score = round(float(row[0]), 1)
-        return {"total_jobs": total, "emails_sent": emailed, "followups_sent": followed_up, "avg_match_score": avg_score}
+        return {
+            "total_jobs": total,
+            "emails_sent": emailed,
+            "followups_sent": followed_up,
+            "auto_applied": auto_applied,
+            "apply_failed": apply_failed,
+            "avg_match_score": avg_score,
+        }
+    finally:
+        session.close()
+
+
+@app.post("/jobs/{job_id}/apply")
+def apply_single_job(job_id: int):
+    """Auto-apply to a single job by ID."""
+    session = SessionLocal()
+    try:
+        job = session.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.auto_applied:
+            raise HTTPException(status_code=400, detail="Already applied to this job")
+        if job.reject:
+            raise HTTPException(status_code=400, detail="Job is rejected — cannot auto-apply")
+
+        job_dict = job.as_dict()
+        proxy = os.getenv("PLAYWRIGHT_PROXY")
+        result = apply_to_job(job_dict, proxy=proxy)
+
+        job.apply_status = result.get("status")
+        job.apply_method = result.get("method")
+        job.ats_detected = result.get("ats_detected")
+        job.apply_error = result.get("error")
+        if result.get("status") == "submitted":
+            job.auto_applied = True
+            job.applied_at = datetime.utcnow()
+        session.add(job)
+        session.commit()
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Auto-apply error for job %d: %s", job_id, e)
+        raise HTTPException(status_code=500, detail="Auto-apply failed")
+    finally:
+        session.close()
+
+
+@app.post("/auto-apply")
+def auto_apply_batch():
+    """Auto-apply to all qualifying jobs that haven't been applied to yet."""
+    session = SessionLocal()
+    try:
+        threshold = float(os.getenv("SEND_MATCH_THRESHOLD", "50.0"))
+        max_per_run = int(os.getenv("MAX_APPLICATIONS_PER_DAY", "20"))
+
+        candidates = session.query(models.Job).filter(
+            models.Job.auto_applied == False,
+            models.Job.reject == False,
+            models.Job.match_score >= threshold,
+            models.Job.url.isnot(None),
+        ).order_by(models.Job.match_score.desc()).limit(max_per_run).all()
+
+        if not candidates:
+            return {"applied": 0, "message": "No qualifying jobs to apply to"}
+
+        proxy = os.getenv("PLAYWRIGHT_PROXY")
+        job_dicts = [j.as_dict() for j in candidates]
+        results = batch_apply(job_dicts, proxy=proxy, max_per_run=max_per_run)
+
+        applied = 0
+        for job_row, res in zip(candidates, results):
+            job_row.apply_status = res.get("status")
+            job_row.apply_method = res.get("method")
+            job_row.ats_detected = res.get("ats_detected")
+            job_row.apply_error = res.get("error")
+            if res.get("status") == "submitted":
+                job_row.auto_applied = True
+                job_row.applied_at = datetime.utcnow()
+                applied += 1
+            session.add(job_row)
+        session.commit()
+
+        return {"applied": applied, "total_attempted": len(results)}
+    except Exception as e:
+        logger.error("Batch auto-apply error: %s", e)
+        raise HTTPException(status_code=500, detail="Batch auto-apply failed")
     finally:
         session.close()
 

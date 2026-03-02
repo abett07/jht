@@ -1,6 +1,6 @@
 # jht — Job Hunting Toolkit
 
-Automated job scraping → resume matching → recruiter email discovery → LLM email drafting → Gmail send pipeline with a Next.js dashboard.
+Automated job scraping → resume matching → recruiter email discovery → LLM email drafting → Gmail send → **auto-apply** pipeline with a Next.js dashboard.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ Automated job scraping → resume matching → recruiter email discovery → LLM
 4:45 AM  →  Find recruiter emails (Apollo, Hunter, Clearbit, SMTP verify, pattern guess)
 4:50 AM  →  Draft emails (OpenAI LLM / fallback template)
 5:00 AM  →  Send emails + follow-ups (Gmail API, resume attached)
+5:10 AM  →  Auto-apply to jobs (Playwright form filling for all major boards + ATS)
 ```
 
 ## Quick Start
@@ -57,6 +58,38 @@ python -m backend.app.pipeline
 30 4 * * * cd /workspaces/jht && ./scripts/run_daily.sh >> logs/pipeline.log 2>&1
 ```
 
+### 5. Auto-Apply Setup
+
+Auto-apply uses Playwright to fill and submit job applications on all major boards and ATS platforms.
+
+**Supported Boards:** LinkedIn (Easy Apply), Indeed, Dice, ZipRecruiter, BuiltIn, Wellfound
+**Supported ATS:** Greenhouse, Lever, Workday (+ generic fallback for others)
+
+```bash
+# 1. Configure your applicant profile in .env:
+APPLICANT_FIRST_NAME=John
+APPLICANT_LAST_NAME=Doe
+APPLICANT_EMAIL=john.doe@gmail.com
+APPLICANT_PHONE=555-123-4567
+APPLICANT_LINKEDIN=https://linkedin.com/in/johndoe
+RESUME_PATH=/path/to/resume.pdf
+
+# 2. Add board credentials you want to auto-apply from:
+LINKEDIN_EMAIL=john.doe@gmail.com
+LINKEDIN_PASSWORD=xxx     # or LINKEDIN_COOKIES=[{...}]
+INDEED_EMAIL=john.doe@gmail.com
+INDEED_PASSWORD=xxx
+
+# 3. Run auto-apply (via API or pipeline):
+curl -X POST http://localhost:8000/auto-apply    # batch apply
+curl -X POST http://localhost:8000/jobs/42/apply  # single job
+
+# Or use the dashboard — click "Auto-Apply All" or per-job "Apply" buttons.
+```
+
+**Rate limiting:** Set `MAX_APPLICATIONS_PER_DAY` (default: 20) to control volume.
+The pipeline runs auto-apply as Step 4.5 between email sending and follow-ups.
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -67,6 +100,8 @@ python -m backend.app.pipeline
 | POST | `/scrape` | Run scraper pipeline |
 | POST | `/jobs/{id}/send` | Draft & send email for a job |
 | POST | `/jobs/{id}/followup` | Send follow-up email |
+| POST | `/jobs/{id}/apply` | Auto-apply to a single job |
+| POST | `/auto-apply` | Batch auto-apply to all qualifying jobs |
 
 ## Environment Variables
 
@@ -84,6 +119,17 @@ See `backend/.env.example` for the full list. Key ones:
 | `PORTFOLIO_URL` | Portfolio link appended to emails |
 | `SEND_MATCH_THRESHOLD` | Min match score to auto-send (default: 50) |
 | `MAX_EMAILS_PER_DAY` | Rate limit (default: 20) |
+| `MAX_APPLICATIONS_PER_DAY` | Auto-apply rate limit (default: 20) |
+| `APPLICANT_FIRST_NAME` | First name for job applications |
+| `APPLICANT_LAST_NAME` | Last name for job applications |
+| `APPLICANT_EMAIL` | Email for job applications |
+| `APPLICANT_PHONE` | Phone for job applications |
+| `APPLICANT_LINKEDIN` | LinkedIn profile URL |
+| `APPLICANT_WORK_AUTH` | Work authorization (e.g. "F1 OPT STEM") |
+| `LINKEDIN_EMAIL` | LinkedIn login for auto-apply |
+| `LINKEDIN_PASSWORD` | LinkedIn password (or use LINKEDIN_COOKIES) |
+| `INDEED_EMAIL` | Indeed login for auto-apply |
+| `DICE_EMAIL` | Dice login for auto-apply |
 | `PLAYWRIGHT_PROXIES` | Comma-separated proxy URLs |
 | `CAREER_PAGES_URLS` | Comma-separated company career page URLs |
 
@@ -104,6 +150,19 @@ backend/
     resume_parser.py     # PDF + TXT resume parser
     pipeline.py          # Full daily pipeline runner
     followup.py          # Follow-up email logic
+    auto_apply/          # Auto-apply engine
+      engine.py          # Orchestrator — routes jobs to correct applicator
+      profile.py         # Applicant profile config (env + JSON)
+      form_filler.py     # Generic intelligent form filling engine
+      linkedin_apply.py  # LinkedIn Easy Apply automation
+      indeed_apply.py    # Indeed application flow
+      dice_apply.py      # Dice Easy Apply automation
+      ziprecruiter_apply.py  # ZipRecruiter 1-Click + standard apply
+      builtin_apply.py   # BuiltIn.com apply with ATS redirect detection
+      wellfound_apply.py # Wellfound modal application
+      greenhouse_apply.py # Greenhouse ATS form filling
+      lever_apply.py     # Lever ATS single-page form
+      workday_apply.py   # Workday multi-step application
     apollo_client.py     # Apollo.io integration
     clearbit_client.py   # Clearbit integration
     smtp_verify.py       # SMTP ping verification

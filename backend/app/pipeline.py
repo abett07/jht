@@ -37,6 +37,7 @@ from backend.app.email_draft import generate_email
 from backend.app.emailer import send_email
 from backend.app.resume_parser import parse_resume_file
 from backend.app.followup import generate_followup, should_followup
+from backend.app.auto_apply.engine import apply_to_job, batch_apply
 
 logging.basicConfig(
     level=logging.INFO,
@@ -177,6 +178,46 @@ def step_draft_and_send(scored, resume_json, session):
     logger.info("Emails sent today: %d", sent_count)
 
 
+def step_auto_apply(scored, session):
+    """STEP 4.5: Auto-apply to qualified jobs via board/ATS automation."""
+    logger.info("=== STEP 4.5: Auto-apply ===") 
+    max_per_day = int(os.getenv("MAX_APPLICATIONS_PER_DAY", "20"))
+    proxy = os.getenv("PLAYWRIGHT_PROXY")
+    applied = 0
+
+    for job, raw in scored:
+        if applied >= max_per_day:
+            logger.info("  Daily auto-apply limit reached (%d)", max_per_day)
+            break
+        if job.auto_applied:
+            continue
+        if not job.url:
+            continue
+
+        try:
+            result = apply_to_job(raw, proxy=proxy)
+            job.apply_status = result.get("status")
+            job.apply_method = result.get("method")
+            job.ats_detected = result.get("ats_detected")
+            job.apply_error = result.get("error")
+            if result.get("status") == "submitted":
+                job.auto_applied = True
+                job.applied_at = datetime.utcnow()
+                applied += 1
+                logger.info("  APPLIED: %s at %s via %s", job.title, job.company, result.get("method"))
+            else:
+                logger.info("  SKIPPED/FAILED: %s at %s — %s", job.title, job.company, result.get("error"))
+            session.add(job)
+            session.commit()
+        except Exception as e:
+            logger.warning("  Auto-apply error for %s: %s", job.title, e)
+
+        # rate limit between applications
+        time.sleep(5)
+
+    logger.info("Auto-applied today: %d", applied)
+
+
 def step_followups(session, resume_json):
     logger.info("=== STEP 5: Follow-ups ===")
     max_per_day = int(os.getenv("MAX_EMAILS_PER_DAY", "20"))
@@ -233,6 +274,7 @@ def run_pipeline():
         scored = step_score(items, resume_json, resume_embedding, session)
         step_find_emails(scored, session)
         step_draft_and_send(scored, resume_json, session)
+        step_auto_apply(scored, session)
         step_followups(session, resume_json)
     except Exception as e:
         logger.error("Pipeline failed: %s", e, exc_info=True)
