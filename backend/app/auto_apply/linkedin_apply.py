@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 from ..scrapers.playwright_base import PlaywrightRunner
 from .form_filler import (
-    fill_form, upload_resume, click_next, click_submit,
+    fill_form, upload_resume,
     wait_for_page_load,
 )
 from .profile import get_profile, get_full_name
@@ -185,6 +185,8 @@ def apply_linkedin(job_url: str, job: Dict, proxy: str = None) -> Dict:
 
             # Click Easy Apply
             easy_btn = page.query_selector(_EASY_APPLY_BTN)
+            if not easy_btn or not easy_btn.is_visible():
+                return {"status": "skipped", "error": "Easy Apply button disappeared before click"}
             easy_btn.click()
             time.sleep(2)
 

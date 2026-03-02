@@ -16,7 +16,7 @@ import sys
 import json
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ensure project root on path so `python -m backend.app.pipeline` works
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -202,7 +202,7 @@ def step_auto_apply(scored, session):
             job.apply_error = result.get("error")
             if result.get("status") == "submitted":
                 job.auto_applied = True
-                job.applied_at = datetime.utcnow()
+                job.applied_at = datetime.now(timezone.utc)
                 applied += 1
                 logger.info("  APPLIED: %s at %s via %s", job.title, job.company, result.get("method"))
             else:
@@ -255,7 +255,7 @@ def step_followups(session, resume_json):
 
 
 def run_pipeline():
-    logger.info("Pipeline started at %s", datetime.utcnow().isoformat())
+    logger.info("Pipeline started at %s", datetime.now(timezone.utc).isoformat())
     session = SessionLocal()
     try:
         resume_json, resume_embedding = _load_resume()
@@ -280,7 +280,7 @@ def run_pipeline():
         logger.error("Pipeline failed: %s", e, exc_info=True)
     finally:
         session.close()
-        logger.info("Pipeline finished at %s", datetime.utcnow().isoformat())
+        logger.info("Pipeline finished at %s", datetime.now(timezone.utc).isoformat())
 
 
 if __name__ == "__main__":

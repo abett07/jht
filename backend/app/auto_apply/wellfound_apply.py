@@ -9,10 +9,9 @@ from typing import Dict
 
 from ..scrapers.playwright_base import PlaywrightRunner
 from .form_filler import (
-    fill_form, upload_resume, click_submit,
+    fill_form, upload_resume,
     wait_for_page_load,
 )
-from .profile import get_profile
 
 logger = logging.getLogger(__name__)
 

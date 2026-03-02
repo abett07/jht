@@ -9,10 +9,9 @@ from typing import Dict
 
 from ..scrapers.playwright_base import PlaywrightRunner
 from .form_filler import (
-    fill_form, upload_resume, click_submit,
+    fill_form, upload_resume,
     wait_for_page_load,
 )
-from .profile import get_profile
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +76,6 @@ def _process_ziprecruiter_form(page, job: Dict) -> str:
     for step in range(max_steps):
         time.sleep(1)
 
-        # Fill profile fields
-        profile = get_profile()
-
         # ZipRecruiter often has simple name + email + resume form
         fill_result = fill_form(page, job=job)
         logger.debug("ZipRecruiter step %d: filled %d fields", step, fill_result["filled"])
@@ -98,6 +94,16 @@ def _process_ziprecruiter_form(page, job: Dict) -> str:
                 'div:has-text("Application Sent"), '
                 'h2:has-text("Applied")'
             )
+            if success:
+                return "submitted"
+
+            # Check for errors
+            errors = page.query_selector_all('div[class*="error"], div[role="alert"]')
+            visible_errors = [e for e in errors if e.is_visible()]
+            if visible_errors:
+                return "failed"
+
+            # No clear success or error — assume submitted
             return "submitted"
 
         break

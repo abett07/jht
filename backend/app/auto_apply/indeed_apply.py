@@ -159,16 +159,16 @@ def apply_indeed(job_url: str, job: Dict, proxy: str = None) -> Dict:
             time.sleep(3)
 
             # Indeed may open in a new tab/popup or iframe
-            # Check for iframe
+            # Check for iframe and switch context if found
+            target_page = page
             iframe = page.query_selector('iframe[title*="Apply"], iframe[id*="indeed-apply"]')
             if iframe:
                 frame = iframe.content_frame()
                 if frame:
-                    # Switch context to iframe — but our form_filler works on page objects
-                    # For simplicity, continue on the main page
-                    pass
+                    logger.info("Indeed: switching to application iframe")
+                    target_page = frame
 
-            result = _process_indeed_steps(page, job)
+            result = _process_indeed_steps(target_page, job)
             return {"status": result, "error": None if result == "submitted" else "Application steps failed"}
 
     except Exception as e:

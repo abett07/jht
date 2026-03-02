@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -228,7 +228,7 @@ def apply_single_job(job_id: int):
         job.apply_error = result.get("error")
         if result.get("status") == "submitted":
             job.auto_applied = True
-            job.applied_at = datetime.utcnow()
+            job.applied_at = datetime.now(timezone.utc)
         session.add(job)
         session.commit()
 
@@ -265,14 +265,16 @@ def auto_apply_batch():
         results = batch_apply(job_dicts, proxy=proxy, max_per_run=max_per_run)
 
         applied = 0
-        for job_row, res in zip(candidates, results):
+        # results may be shorter than candidates if batch_apply hit its limit
+        for i, res in enumerate(results):
+            job_row = candidates[i]
             job_row.apply_status = res.get("status")
             job_row.apply_method = res.get("method")
             job_row.ats_detected = res.get("ats_detected")
             job_row.apply_error = res.get("error")
             if res.get("status") == "submitted":
                 job_row.auto_applied = True
-                job_row.applied_at = datetime.utcnow()
+                job_row.applied_at = datetime.now(timezone.utc)
                 applied += 1
             session.add(job_row)
         session.commit()

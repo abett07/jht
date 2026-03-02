@@ -23,3 +23,5 @@ numpy==1.26.4
 # DNS for SMTP verification
 dnspython==2.4.2
 
+# Testing
+pytest>=7.0.0

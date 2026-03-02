@@ -82,8 +82,8 @@ def _upload_greenhouse_resume(page) -> bool:
             'label[for="resume"], span:has-text("Attach resume")'
         )
         if attach_btn and attach_btn.is_visible():
-            # Some Greenhouse forms use a click-to-upload pattern
-            pass
+            attach_btn.click()
+            time.sleep(0.5)
 
         file_input = page.query_selector(_RESUME_INPUT)
         if file_input:

@@ -20,7 +20,7 @@ _FIELD_MAP: List[Tuple[List[str], str]] = [
     # Name fields
     (["first name", "first_name", "fname", "given name"], "first_name"),
     (["last name", "last_name", "lname", "surname", "family name"], "last_name"),
-    (["full name", "your name", "name"], "_full_name"),
+    (["full name", "your name", "applicant name", "candidate name"], "_full_name"),
     # Contact
     (["email", "e-mail"], "email"),
     (["phone", "mobile", "telephone", "cell"], "phone"),
@@ -28,6 +28,14 @@ _FIELD_MAP: List[Tuple[List[str], str]] = [
     (["linkedin"], "linkedin_url"),
     (["github"], "github_url"),
     (["portfolio", "personal website", "website", "url", "web site"], "website"),
+    # Authorization / EEO (before location — "ethnicity" contains "city" substring)
+    (["authorized to work", "work authorization", "legally authorized", "eligible to work"], "work_authorization"),
+    (["sponsorship", "visa sponsorship", "require sponsorship", "need sponsorship"], "sponsorship_needed"),
+    (["relocat", "willing to relocate"], "willing_to_relocate"),
+    (["gender"], "gender"),
+    (["veteran"], "veteran_status"),
+    (["disability", "disabled"], "disability_status"),
+    (["race", "ethnicity"], "race_ethnicity"),
     # Location
     (["street", "address line 1", "address_line1"], "address.street"),
     (["city"], "address.city"),
@@ -45,14 +53,6 @@ _FIELD_MAP: List[Tuple[List[str], str]] = [
     (["major", "field of study", "area of study"], "education.major"),
     (["school", "university", "college", "institution"], "education.school"),
     (["graduation year", "grad year", "year of graduation"], "education.grad_year"),
-    # Authorization / EEO
-    (["authorized to work", "work authorization", "legally authorized", "eligible to work"], "work_authorization"),
-    (["sponsorship", "visa sponsorship", "require sponsorship", "need sponsorship"], "sponsorship_needed"),
-    (["relocat", "willing to relocate"], "willing_to_relocate"),
-    (["gender"], "gender"),
-    (["veteran"], "veteran_status"),
-    (["disability", "disabled"], "disability_status"),
-    (["race", "ethnicity"], "race_ethnicity"),
 ]
 
 
@@ -275,7 +275,7 @@ def fill_form(page, job: Optional[Dict] = None, dry_run: bool = False) -> Dict:
             result["fields"].append({"label": label, "key": key, "status": "filled"})
 
         except Exception as e:
-            logger.debug("Error filling input '%s': %s", label if 'label' in dir() else '?', e)
+            logger.debug("Error filling input '%s': %s", label if 'label' in locals() else '?', e)
             result["skipped"] += 1
 
     # 2. Handle <select> elements
@@ -310,7 +310,7 @@ def fill_form(page, job: Optional[Dict] = None, dry_run: bool = False) -> Dict:
                 result["filled"] += 1
 
         except Exception as e:
-            logger.debug("Error filling select '%s': %s", label if 'label' in dir() else '?', e)
+            logger.debug("Error filling select '%s': %s", label if 'label' in locals() else '?', e)
             result["skipped"] += 1
 
     # 3. Handle radio button groups

@@ -9,10 +9,9 @@ from typing import Dict
 
 from ..scrapers.playwright_base import PlaywrightRunner
 from .form_filler import (
-    fill_form, upload_resume, click_submit, click_next,
+    fill_form, upload_resume, click_submit,
     wait_for_page_load,
 )
-from .profile import get_profile
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,17 @@ def _process_dice_application(page, job: Dict) -> str:
                 'div:has-text("Successfully applied"), '
                 'h1:has-text("Application Complete")'
             )
-            return "submitted" if success else "submitted"
+            if success:
+                return "submitted"
+
+            # Check for errors
+            errors = page.query_selector_all('div[class*="error"], div[role="alert"]')
+            visible_errors = [e for e in errors if e.is_visible()]
+            if visible_errors:
+                return "failed"
+
+            # If URL changed after submit, assume success
+            return "submitted"
 
         # Click next
         next_btn = page.query_selector(_NEXT_BTN)

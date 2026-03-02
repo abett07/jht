@@ -157,8 +157,17 @@ def _upload_workday_resume(page) -> bool:
         # Try "Autofill with Resume" button first (parses resume and fills fields)
         autofill = page.query_selector(_AUTOFILL_RESUME_BTN)
         if autofill and autofill.is_visible():
-            # This will open a file dialog
-            pass
+            # Use file chooser to handle the file dialog triggered by the button
+            try:
+                with page.expect_file_chooser(timeout=3000) as fc_info:
+                    autofill.click()
+                file_chooser = fc_info.value
+                file_chooser.set_files(os.path.abspath(resume_path))
+                time.sleep(2)
+                logger.info("Workday: resume uploaded via autofill")
+                return True
+            except Exception:
+                logger.debug("Workday autofill button did not trigger file chooser, trying direct input")
 
         # Direct file input
         file_input = page.query_selector(_RESUME_INPUT)

@@ -91,6 +91,15 @@ def get_profile() -> Dict:
     return _profile
 
 
+def reset_profile():
+    """Clear cached profile so it reloads on next access.
+
+    Useful when environment variables or profile file change at runtime.
+    """
+    global _profile
+    _profile = None
+
+
 def get_full_name() -> str:
     p = get_profile()
     return f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
