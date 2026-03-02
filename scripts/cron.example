@@ -1,0 +1,10 @@
+# Crontab example — full daily pipeline at 4:30 AM
+# Edit with: crontab -e
+# 30 4 * * * cd /workspaces/jht && ./scripts/run_daily.sh >> /workspaces/jht/logs/pipeline.log 2>&1
+#
+# Timeline (handled inside pipeline.py):
+#   4:30 → Scrape jobs from all sources
+#   4:40 → Filter & score with matching engine
+#   4:45 → Extract recruiter emails
+#   4:50 → Draft emails (LLM)
+#   5:00 → Send emails + follow-ups

@@ -1,0 +1,25 @@
+fastapi==0.100.0
+uvicorn[standard]==0.22.0
+SQLAlchemy==2.0.19
+psycopg2-binary==2.9.7
+playwright==1.40.0
+beautifulsoup4==4.12.2
+httpx==0.24.1
+python-dotenv==1.0.0
+openai>=1.0.0,<2.0.0
+google-api-python-client==2.86.0
+google-auth==2.24.0
+python-multipart==0.0.6
+
+# OAuth helpers for Gmail
+google-auth-oauthlib==1.2.1
+
+# PDF parsing
+pdfminer.six==20221105
+
+# numeric helpers
+numpy==1.26.4
+
+# DNS for SMTP verification
+dnspython==2.4.2
+
